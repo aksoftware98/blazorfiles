@@ -1,0 +1,90 @@
+﻿@page "/"
+
+@using System.IO;
+@using Blazor.FileReader
+
+@inject IFileReaderService fileReader
+@inject HttpClient  client
+
+<h1>Upload file!</h1>
+
+<div class="row">
+    <div class="col-4">
+        <div class="form-group">
+            <input type="file" @ref="inputReference" @onchange="async () => await OpenFileAsync()"/>
+            <ul>
+                <li>File Name: @fileName</li>
+                <li>Size: @size</li>
+                <li>Type: @type</li>
+            </ul>
+        </div>
+        <button class="btn btn-block btn-success" @onclick="async () => await UploadFileAsync()">Upload File</button>
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="alert alert-success">
+                File has been uploaded
+            </div>
+        }
+    </div>
+    <div class="col-4">
+        @if (imagePath != null)
+        {
+            <img style="width:150px" src="@imagePath" />
+        }
+    </div>
+</div>
+
+@functions
+{
+    ElementReference inputReference;
+    string message = string.Empty;
+    string imagePath = null;
+
+    string fileName = string.Empty;
+    string type = string.Empty;
+    string size = string.Empty;
+
+    Stream fileStream = null;
+
+    async Task OpenFileAsync()
+    {
+        // Read the files
+        var file = (await fileReader.CreateReference(inputReference).EnumerateFilesAsync()).FirstOrDefault();
+
+        if (file == null)
+            return;
+
+        // Get the info of that files 
+        var fileInfo = await file.ReadFileInfoAsync();
+        fileName = fileInfo.Name;
+        size = $"{fileInfo.Size}b";
+        type = fileInfo.Type;
+
+        using (var ms = await file.CreateMemoryStreamAsync((int)fileInfo.Size))
+        {
+            fileStream = new MemoryStream(ms.ToArray());
+        }
+    }
+
+    async Task UploadFileAsync()
+    {
+
+        // Create the content 
+        var content = new MultipartFormDataContent();
+        content.Headers.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("form-data");
+
+        content.Add(new StreamContent(fileStream, (int)fileStream.Length), "image", fileName);
+
+        string url = "https://localhost:44345";
+
+        var response = await client.PostAsync($"{url}/api/images", content);
+
+        if(response.IsSuccessStatusCode)
+        {
+            var uploadedFileName = await response.Content.ReadAsStringAsync();
+            imagePath = $"{url}/{uploadedFileName}";
+            message = "File has been uploaded successfully!";
+        }
+    }
+}
